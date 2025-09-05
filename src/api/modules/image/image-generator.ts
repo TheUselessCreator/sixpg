@@ -1,45 +1,63 @@
-import { loadImage, Canvas } from 'canvas';
-
-export default class ImageGenerator 
-{
-    async addBackgroundToCanvas(ctx, canvas, backgroundURL: string) {
-        if (backgroundURL && backgroundURL.includes('api'))
-            throw Error('I don\'t think that\'s a good idea... 🤔');
-
-        try {
-          const background = await loadImage(backgroundURL || 'api/modules/image/wallpaper.png') 
-          ctx.drawImage(background, 0, 0, canvas.width, canvas.height);
-        }
-        catch {}
+// Browser-compatible image generation using HTML Canvas API
+export class ImageGenerator {
+  static async generateImage(width: number, height: number): Promise<string> {
+    // Create a canvas element programmatically
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not get canvas context');
     }
-    applyText(canvas: Canvas, text: string)
-    {
-      const context = canvas.getContext('2d');
-      let fontSize = 70;
-
-      do
-        context.font = `${fontSize -= 8}px Roboto, sans-serif`;
-      while (context.measureText(text).width > canvas.width - 275);
-      return context.font;
+    
+    // Basic canvas setup
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    
+    // Return base64 data URL
+    return canvas.toDataURL('image/png');
+  }
+  
+  static async createTextImage(text: string, options: {
+    width?: number;
+    height?: number;
+    fontSize?: number;
+    fontFamily?: string;
+    color?: string;
+    backgroundColor?: string;
+  } = {}): Promise<string> {
+    const {
+      width = 400,
+      height = 200,
+      fontSize = 24,
+      fontFamily = 'Arial',
+      color = '#000000',
+      backgroundColor = '#ffffff'
+    } = options;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Could not get canvas context');
     }
-    wrapText(ctx, text: string, x: number, y: number, maxWidth: number, lineHeight = 15) 
-    {
-      let words = text.split(' ');
-      let line = '';
-
-      for(let n = 0; n < words.length; n++) 
-      {
-        let testLine = line + words[n] + ' ';
-        let metrics = ctx.measureText(testLine);
-        let testWidth = metrics.width;
-        if (testWidth > maxWidth && n > 0) {
-          ctx.fillText(line, x, y);
-          line = words[n] + ' ';
-          y += lineHeight;
-        }
-        else
-          line = testLine;
-      }
-      ctx.fillText(line, x, y);
-    }
+    
+    // Fill background
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Set text properties
+    ctx.fillStyle = color;
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Draw text
+    ctx.fillText(text, width / 2, height / 2);
+    
+    return canvas.toDataURL('image/png');
+  }
 }
