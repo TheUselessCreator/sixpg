@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { SavedMember } from '../../data/models/member';
+import { supabase, Member } from '../../lib/supabase';
 import { AuthClient } from '../server';
 import Deps from '../../utils/deps';
 import Members from '../../data/members';
@@ -27,10 +27,10 @@ const events = Deps.get<EventsService>(EventsService),
 
 router.get('/', async (req, res) => {
     try {
-        const clients = await getManageableBots(req.query.key.toString());
+        const clients = await getManageableBots(req.query.key as string);
         
         res.json(clients);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.post('/', async (req, res) => {
@@ -44,13 +44,13 @@ router.post('/', async (req, res) => {
         const exists = await bots.exists(bot.user);
         if (!exists) {
             savedBot.id = bot.user.id;
-            savedBot.ownerId = authUser.id;
+            savedBot.owner_id = authUser.id;
         }
-        savedBot.tokenHash = AES.encrypt(req.body.token, process.env.ENCRYPTION_KEY) as any;
-        await savedBot.save();
+        savedBot.token_hash = AES.encrypt(req.body.token, process.env.ENCRYPTION_KEY || '') as any;
+        await bots.save(savedBot);
 
         res.json(savedBot);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.patch('/:id', async (req, res) => {
@@ -62,7 +62,7 @@ router.patch('/:id', async (req, res) => {
         } catch (error) {
             throw new TypeError('Invalid token, reverting back.');
         }
-    } catch (error) { sendError(res, 400, error); }    
+    } catch (error) { sendError(res, 400, error as Error); }    
 });
 
 router.delete('/:id', async (req, res) => {
@@ -73,33 +73,33 @@ router.delete('/:id', async (req, res) => {
         await bots.delete(id);
 
         res.json({ success: true });
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.put('/:id/:module', async (req, res) => {
     try {
         const { id, module } = req.params;
 
-        await validateBotOwner(req.query.key.toString(), id);
+        await validateBotOwner(req.query.key as string, id);
 
         const user = await getUser(req.query.key);
         const savedConfig = await bots.get({ id });
         
         const change = AuditLogger.getChanges({
-            old: savedConfig[module],
+            old: (savedConfig.config as any)[module],
             new: req.body
         }, module, user.id);
 
-        savedConfig[module] = req.body;
+        (savedConfig.config as any)[module] = req.body;
         await bots.save(savedConfig);
        
         const log = await logs.get({ id });
         
         log.changes.push(change);
-        await log.save();
+        await logs.save(log);
             
         res.json(savedConfig);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.get('/:id/config', async (req, res) => {
@@ -107,16 +107,16 @@ router.get('/:id/config', async (req, res) => {
         const savedConfig = await bots.get({ id: req.params.id });
 
         res.json(savedConfig);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.get('/:id/log', async(req, res) => {
     try {
         const bot = GlobalBots.get(req.params.id);
-        const log = await logs.get(bot.user);
+        const log = await logs.get(bot!.user);
 
         res.send(log);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.get('/:id/public', (req, res) => {
@@ -131,10 +131,9 @@ router.get('/:botId/guilds', (req, res) => {
         if (!bot)
             throw new TypeError('Bot not found.');
 
-        res.json(bot.guilds.cache);        
-    } catch (error) { sendError(res, 400, error); }
+        res.json(Array.from(bot.guilds.cache.values()));        
+    } catch (error) { sendError(res, 400, error as Error); }
 });
-
 
 router.get('/:botId/guilds/:guildId', (req, res) => {
     try {
@@ -146,7 +145,7 @@ router.get('/:botId/guilds/:guildId', (req, res) => {
         const guild = bot.guilds.cache.get(guildId);
 
         res.json(guild);        
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.get('/:botId/guilds/:guildId/members', async (req, res) => {
@@ -154,10 +153,10 @@ router.get('/:botId/guilds/:guildId/members', async (req, res) => {
         const { botId, guildId } = req.params;
         const bot = GlobalBots.get(botId);
 
-        const savedMembers = await SavedMember.find({ guildId }).lean();        
+        const savedMembers = await members.findByGuild(guildId);        
         let rankedMembers = [];
         for (const member of savedMembers) {
-            const user = bot.users.cache.get(member.userId);
+            const user = bot!.users.cache.get(member.user_id);
             if (!user) continue;
             
             const xpInfo = Leveling.xpInfo(member.xp);
@@ -166,7 +165,7 @@ router.get('/:botId/guilds/:guildId/members', async (req, res) => {
         rankedMembers.sort((a, b) => b.xp - a.xp);
     
         res.json(rankedMembers);
-    } catch (error) { sendError(res, 400, error); }
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 router.get('/:botId/guilds/:guildId/members/:memberId/xp-card', async (req, res) => {
@@ -174,23 +173,32 @@ router.get('/:botId/guilds/:guildId/members/:memberId/xp-card', async (req, res)
         const { botId, guildId, memberId } = req.params;
         const bot = GlobalBots.get(botId);
 
-        const guild = bot.guilds.cache.get(guildId);
+        const guild = bot!.guilds.cache.get(guildId);
         const member = guild?.members.cache.get(memberId);        
         if (!member)
-            throw Error();
+            throw Error('Member not found');
 
-        const user = bot.users.cache.get(memberId);
-        const savedUser = await users.get(user);
+        const user = bot!.users.cache.get(memberId);
+        const savedUser = await users.get(user!);
         
         const savedMember = await members.get(member);  
-        const savedMembers = await SavedMember.find({ guildId });
+        const savedMembers = await members.findByGuild(guildId);
         const rank = Ranks.get(member, savedMembers);
         
-        const generator = new XPCardGenerator(user, savedUser, rank);
-        const image = await generator.generate(savedMember);
+        const image = await XPCardGenerator.generateXPCard({
+            username: user!.username,
+            level: Leveling.xpInfo(savedMember.xp).level,
+            xp: savedMember.xp,
+            xpToNext: Leveling.xpInfo(savedMember.xp).xpForNextLevel,
+            rank,
+            avatarUrl: user!.displayAvatarURL({ extension: 'png' })
+        });
         
-        res.set({'Content-Type': 'image/png'}).send(image);
-    } catch (error) { sendError(res, 400, error); }
+        // Convert base64 to buffer
+        const buffer = Buffer.from(image.split(',')[1], 'base64');
+        
+        res.set({'Content-Type': 'image/png'}).send(buffer);
+    } catch (error) { sendError(res, 400, error as Error); }
 });
 
 export async function validateBotOwner(key: string, botId: string) {
@@ -198,7 +206,7 @@ export async function validateBotOwner(key: string, botId: string) {
         throw new TypeError('No key provided.');
 
     const manageableBots = await getManageableBots(key);
-    const isManageable = manageableBots.some(b => b.id === botId);
+    const isManageable = manageableBots.some(b => b?.id === botId);
     if (!isManageable)
         throw new TypeError('You cannot manage this bot.')
 }
@@ -213,7 +221,7 @@ function leaderboardMember(user: User, xpInfo: any) {
         id: user.id,
         username: user.username,
         tag: '#' + user.discriminator,
-        displayAvatarURL: user.displayAvatarURL({ dynamic: true }),
+        displayAvatarURL: user.displayAvatarURL({ extension: 'png' }),
         ...xpInfo
     };
 }

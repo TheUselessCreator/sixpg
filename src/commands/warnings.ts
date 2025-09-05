@@ -1,14 +1,14 @@
 import { Command, CommandContext, Permission } from './command';
 import Members from '../data/members';
 import { TextChannel } from 'discord.js';
-import { MemberDocument } from '../data/models/member';
+import { Member } from '../lib/supabase';
 import Deps from '../utils/deps';
 import CommandUtils from '../utils/command-utils';
 
 export default class WarningsCommand implements Command {
     name = 'warnings';
     summary = 'Display the warnings of a member.';
-    precondition: Permission = 'VIEW_AUDIT_LOG';
+    precondition: Permission = 'ViewAuditLog';
     cooldown = 3;
     module = 'Auto-mod';
 
@@ -27,12 +27,12 @@ export default class WarningsCommand implements Command {
         await ctx.channel.send(`User has \`${savedMember.warnings.length}\` warnings.`)
     }
 
-    private async displayWarning(position: number, savedMember: MemberDocument, channel: TextChannel) {
+    private async displayWarning(position: number, savedMember: Member, channel: TextChannel) {
         if (position <= 0 || position > savedMember.warnings.length)
             throw new TypeError('Warning at position not found on user.');
 
         const warning = savedMember.warnings[position - 1];
         const instigator = channel.client.users.cache.get(warning.instigatorId);
-        channel.send(`**Warning #${position}**\n**By**: <@!${instigator ?? 'N/A'}>\n**For**: \`${warning.reason}\``);
+        channel.send(`**Warning #${position}**\n**By**: <@!${instigator?.id ?? 'N/A'}>\n**For**: \`${warning.reason}\``);
     }
 }

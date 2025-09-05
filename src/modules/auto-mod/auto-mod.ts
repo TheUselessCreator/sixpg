@@ -1,5 +1,5 @@
 import { Message, GuildMember, User } from 'discord.js';
-import { BotDocument, MessageFilter } from '../../data/models/bot';
+import { Bot, MessageFilter } from '../../lib/supabase';
 import Deps from '../../utils/deps';
 import Members from '../../data/members';
 import Log from '../../utils/log';
@@ -27,21 +27,21 @@ export default class AutoMod {
         Log.info(`Loaded: ${this.validators.length} validators`, `automod`);
     }
     
-    async validateMsg(msg: Message, savedBot: BotDocument) {
-        const activeFilters = savedBot.autoMod.filters;
+    async validateMsg(msg: Message, savedBot: Bot) {
+        const activeFilters = savedBot.config.autoMod.filters;
         for (const filter of activeFilters) {
             try {                
                 const validator = this.validators.find(v => v.filter === filter);
-                const hasIgnoredRoleWithName = savedBot.autoMod.ignoredRoleNames
-                    .some(n => msg.member.roles.cache.find(r => r.name === n));
+                const hasIgnoredRoleWithName = savedBot.config.autoMod.ignoredRoleNames
+                    .some(n => msg.member!.roles.cache.find(r => r.name === n));
                 if (hasIgnoredRoleWithName) return;
 
                 validator?.validate(msg.content, savedBot);
             } catch (validation) {
-                if (savedBot.autoMod.autoDeleteMessages)
-                    await msg.delete({ reason: validation.message });
-                if (savedBot.autoMod.autoWarnUsers && msg.member && msg.client.user)
-                    await this.warn(msg.member, msg.client.user, validation.message);
+                if (savedBot.config.autoMod.autoDeleteMessages)
+                    await msg.delete();
+                if (savedBot.config.autoMod.autoWarnUsers && msg.member && msg.client.user)
+                    await this.warn(msg.member, msg.client.user, (validation as ValidationError).message);
 
                 throw validation;
             }
@@ -55,10 +55,10 @@ export default class AutoMod {
             throw new TypeError('Bots cannot be warned.');
 
         const savedMember = await this.members.get(member);
-        const warning = { reason, instigatorId: instigator.id, at: new Date() };
+        const warning = { reason, instigatorId: instigator.id, at: new Date().toISOString() };
         
         savedMember.warnings.push(warning);        
-        await this.members.save(savedMember);
+        await this.members.save!(savedMember);
 
         try {
             await member.send(`<@!${instigator}> warned you for \`${reason}\``);

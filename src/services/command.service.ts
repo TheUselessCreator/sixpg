@@ -1,11 +1,11 @@
 import fs from 'fs';
-import { Message,  TextChannel } from 'discord.js';
+import { Message, TextChannel } from 'discord.js';
 import { Command, CommandContext } from '../commands/command';
 import Log from '../utils/log';
 import Deps from '../utils/deps';
 import Commands from '../data/commands';
 import Logs from '../data/logs';
-import { BotDocument } from '../data/models/bot';
+import { Bot } from '../lib/supabase';
 import Cooldowns from './cooldowns';
 import Validators from './validators';
 import { promisify } from 'util';
@@ -38,36 +38,39 @@ export default class CommandService {
         Log.info(`Loaded: ${this.commands.size} commands`, `cmds`);
     }
 
-    async handle(msg: Message, savedGuild: BotDocument) {
+    async handle(msg: Message, savedBot: Bot) {
         if (!(msg.member && msg.content && msg.guild && !msg.author.bot)) return;
 
-        return this.handleCommand(msg, savedGuild);
+        return this.handleCommand(msg, savedBot);
     }
-    private async handleCommand(msg: Message, savedGuild: BotDocument) {
+
+    private async handleCommand(msg: Message, savedBot: Bot) {
         const content = msg.content.toLowerCase();
         try {
-            this.validators.checkChannel(msg.channel as TextChannel, savedGuild);
+            this.validators.checkChannel(msg.channel as TextChannel, savedBot);
 
-            const command = this.findCommand(savedGuild.general.prefix, content);
+            const command = this.findCommand(savedBot.config.general.prefix, content);
             if (!command || this.cooldowns.active(msg.author, command)) return;
 
-            this.validators.checkCommand(command, savedGuild, msg);
-            this.validators.checkPreconditions(command, msg.member);
+            this.validators.checkCommand(command, savedBot, msg);
+            this.validators.checkPreconditions(command, msg.member!);
 
-            await this.findAndExecute(msg, savedGuild);
+            await this.findAndExecute(msg, savedBot);
 
             this.cooldowns.add(msg.author, command);
 
             await this.logs.logCommand(msg, command);
         } catch (error) {
-            const content = error?.message ?? 'Un unknown error occurred';          
+            const content = (error as Error)?.message ?? 'An unknown error occurred';          
             msg.channel.send(':warning: ' + content);
         }
     }
 
-    async findAndExecute(msg: Message, savedGuild: BotDocument) {
-        const prefix = savedGuild.general.prefix;        
+    async findAndExecute(msg: Message, savedBot: Bot) {
+        const prefix = savedBot.config.general.prefix;        
         const command = this.findCommand(prefix, msg.content);        
+        if (!command) return;
+        
         await command.execute(new CommandContext(msg), 
             ...this.getCommandArgs(prefix, msg.content));  
     }
@@ -79,8 +82,10 @@ export default class CommandService {
 
         return this.commands.get(name);
     }
+
     private getCommandArgs(prefix: string, content: string) {
         let args = content.split(' ');
-        return args.splice(prefix.length, args.length);
+        args.shift(); // Remove command name
+        return args;
     }
 }

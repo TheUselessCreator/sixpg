@@ -1,4 +1,4 @@
-import { EventType, AnnounceEvent } from '../../data/models/bot';
+import { EventType, AnnounceEvent } from '../../lib/supabase';
 import Bots from '../../data/bots';
 import { Guild, TextChannel } from 'discord.js';
 import Deps from '../../utils/deps';
@@ -11,10 +11,10 @@ export default abstract class AnnounceHandler implements EventHandler {
     constructor(protected bots = Deps.get<Bots>(Bots)) {}
 
     protected async getEvent(guild: Guild) {
-        const savedConfig = await this.bots.get(guild.client.user);
+        const savedConfig = await this.bots.get(guild.client.user!);
         
-        const activeEvent = savedConfig.announce.events.find(e => e.event === this.event);
-        return (savedConfig.announce.enabled && activeEvent) ? activeEvent : null;
+        const activeEvent = savedConfig.config.announce.events.find(e => e.event === this.event);
+        return (savedConfig.config.announce.enabled && activeEvent) ? activeEvent : null;
     }
 
     protected getChannel(config: AnnounceEvent, guild: Guild) {

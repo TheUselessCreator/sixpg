@@ -18,16 +18,16 @@ export default class MessageHandler implements EventHandler {
     async invoke(msg: Message) {
         if (msg.author.bot) return;
 
-        const savedBot = await this.bots.get(msg.client.user);
+        const savedBot = await this.bots.get(msg.client.user!);
 
-        const isCommand = msg.content.startsWith(savedBot.general.prefix);
+        const isCommand = msg.content.startsWith(savedBot.config.general.prefix);
         if (isCommand)
             return await this.commands.handle(msg, savedBot);        
 
         
-        if (savedBot.autoMod.enabled)
+        if (savedBot.config.autoMod.enabled)
             await this.autoMod.validateMsg(msg, savedBot);
-        if (savedBot.leveling.enabled)
+        if (savedBot.config.leveling.enabled)
             await this.leveling.validateXPMsg(msg, savedBot);
     }
 }

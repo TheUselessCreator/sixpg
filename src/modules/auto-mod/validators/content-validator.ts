@@ -1,7 +1,7 @@
-import { BotDocument, MessageFilter } from '../../../data/models/bot';
+import { Bot, MessageFilter } from '../../../lib/supabase';
 
 export interface ContentValidator {
     filter: MessageFilter;
     
-    validate(content: string, guild: BotDocument): void;
+    validate(content: string, bot: Bot): void;
 }

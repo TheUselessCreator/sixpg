@@ -1,5 +1,5 @@
-import { GuildMember, TextChannel } from 'discord.js';
-import { EventType } from '../../data/models/bot';
+import { GuildMember } from 'discord.js';
+import { EventType } from '../../lib/supabase';
 import AnnounceHandler from './announce-handler';
 import EventVariables from '../../modules/announce/event-variables';
 

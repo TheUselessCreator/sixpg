@@ -9,8 +9,7 @@ import Deps from '../utils/deps';
 import Bots from '../data/bots';
 import CryptoJS, { AES } from 'crypto-js';
 import Log from '../utils/log';
-import { Client } from 'discord.js';
-import { SavedBot } from '../data/models/bot';
+import { Client, GatewayIntentBits } from 'discord.js';
 
 export default class EventsService {
     private readonly handlers: EventHandler[] = [
@@ -28,9 +27,11 @@ export default class EventsService {
         const savedBots = await this.bots.getAll();
 
         let loggedInCount = 0;
-        for (const { tokenHash } of savedBots) {
+        for (const { token_hash } of savedBots) {
+            if (!token_hash) continue;
+            
             const token = AES
-                .decrypt(tokenHash || '', process.env.ENCRYPTION_KEY)
+                .decrypt(token_hash, process.env.ENCRYPTION_KEY || '')
                 .toString(CryptoJS.enc.Utf8);
             const isValidToken = /^[A-Za-z\d]{24}\.[A-Za-z\d-]{6}\.[A-Za-z\d-_]{27}$/.test(token);
             if (!isValidToken) continue;
@@ -40,14 +41,23 @@ export default class EventsService {
                 loggedInCount++;
             } catch {
                 Log.error(`Invalid bot token.`, 'events');
-                await SavedBot.deleteOne({ tokenHash });
+                await this.bots.delete(savedBots.find(b => b.token_hash === token_hash)?.id || '');
             }
         }
         Log.info(`Logged in ${loggedInCount} bots`, 'events');
     }
 
     async startBot(token: string) {
-        const bot = new Client();
+        const bot = new Client({
+            intents: [
+                GatewayIntentBits.Guilds,
+                GatewayIntentBits.GuildMessages,
+                GatewayIntentBits.GuildMembers,
+                GatewayIntentBits.MessageContent,
+                GatewayIntentBits.GuildVoiceStates
+            ]
+        });
+        
         const handler = this.handlers[0];
         bot.on('ready', () => handler.invoke(bot));
 
