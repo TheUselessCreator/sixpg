@@ -3,3 +3,4 @@
 logs/dashboard/*
 lib/
 node_modules/
+.env
